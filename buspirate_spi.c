@@ -228,6 +228,8 @@ int buspirate_spi_init(void)
 	int serialspeed_index = -1;
 	int ret = 0;
 	int pullup = 0;
+	int power = 0;		// new feature to control power
+	int opendrain = 0;	// new feature to control open collector
 
 	dev = extract_programmer_param("dev");
 	if (dev && !strlen(dev)) {
@@ -274,6 +276,28 @@ int buspirate_spi_init(void)
 			; // ignore
 		else
 			msg_perr("Invalid pullups state, not using them.\n");
+	}
+	free(tmp);
+	
+	tmp = extract_programmer_param("power-in");
+	if (tmp) {
+		if (strcasecmp("on", tmp) == 0)
+			power = 1;
+		else if (strcasecmp("off", tmp) == 0)
+			; // ignore
+		else
+			msg_perr("Invalid power state. [?]\n");
+	}
+	free(tmp);
+
+	tmp = extract_programmer_param("open-drain");
+	if (tmp) {
+		if (strcasecmp("on", tmp) == 0)
+			opendrain = 1;
+		else if (strcasecmp("off", tmp) == 0)
+			; // ignore
+		else
+			msg_perr("Invalid open drain state, open collector mode will not used.\n");
 	}
 	free(tmp);
 
@@ -519,8 +543,12 @@ int buspirate_spi_init(void)
 		return 1;
 	}
 
-	/* Initial setup (SPI peripherals config): Enable power, CS high, AUX */
-	bp_commbuf[0] = 0x40 | 0x0b;
+	/* Initial setup (SPI peripherals config): Enable CS high, AUX */
+	bp_commbuf[0] = 0x40 | 0x03;
+	if (power == 1) {
+		bp_commbuf[0] |= (1 << 3);
+		msg_pdbg("Enabling internal power.\n");
+	}
 	if (pullup == 1) {
 		bp_commbuf[0] |= (1 << 2);
 		msg_pdbg("Enabling pull-up resistors.\n");
@@ -544,10 +572,13 @@ int buspirate_spi_init(void)
 	}
 
 	/* Set SPI config: output type, idle, clock edge, sample */
-	bp_commbuf[0] = 0x80 | 0xa;
-	if (pullup == 1) {
-		bp_commbuf[0] &= ~(1 << 3);
-		msg_pdbg("Pull-ups enabled, so using HiZ pin output! (Open-Drain mode)\n");
+	/* new open collector feature enabling */
+	if (opendrain == 1) {
+		bp_commbuf[0] = 0x80 | 0x02;
+		msg_pdbg("Enabling output HiZ SPI.\n");
+	} else {
+		bp_commbuf[0] = 0x80 | 0x0a;
+		msg_pdbg("Enabling output 3.3V SPI.\n");
 	}
 	ret = buspirate_sendrecv(bp_commbuf, 1, 1);
 	if (ret)
