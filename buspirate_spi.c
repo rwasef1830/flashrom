@@ -633,13 +633,14 @@ static int buspirate_spi_send_command_v2(struct flashctx *flash, unsigned int wr
 	if (writecnt > 4096 || readcnt > 4096 || (readcnt + writecnt) > 4096)
 		return SPI_INVALID_LENGTH;
 
-	/* 5 bytes extra for command, writelen, readlen.
+	/* 7 bytes extra for cs assert, command, writelen, readlen. cs deassert.
 	 * 1 byte extra for Ack/Nack.
 	 */
-	if (buspirate_commbuf_grow(max(writecnt + 5, readcnt + 1)))
+	if (buspirate_commbuf_grow(max(writecnt + 6, readcnt + 2)))
 		return ERROR_OOM;
 
 	/* Combined SPI write/read. */
+	bp_commbuf[i++] = 0x02; // CS assert
 	bp_commbuf[i++] = 0x04;
 	bp_commbuf[i++] = (writecnt >> 8) & 0xff;
 	bp_commbuf[i++] = writecnt & 0xff;
@@ -647,7 +648,7 @@ static int buspirate_spi_send_command_v2(struct flashctx *flash, unsigned int wr
 	bp_commbuf[i++] = readcnt & 0xff;
 	memcpy(bp_commbuf + i, writearr, writecnt);
 
-	ret = buspirate_sendrecv(bp_commbuf, i + writecnt, 1 + readcnt);
+	ret = buspirate_sendrecv(bp_commbuf, i + writecnt, 2 + readcnt);
 
 	if (ret) {
 		msg_perr("Bus Pirate communication error!\n");
@@ -660,7 +661,7 @@ static int buspirate_spi_send_command_v2(struct flashctx *flash, unsigned int wr
 	}
 
 	/* Skip Ack. */
-	memcpy(readarr, bp_commbuf + 1, readcnt);
+	memcpy(readarr, bp_commbuf + 2, readcnt);
 
 	return ret;
 }
